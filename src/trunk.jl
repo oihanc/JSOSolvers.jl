@@ -129,12 +129,20 @@ mutable struct TrunkSolver{
   params::TRUNKParameterSet
 end
 
+# no memory (:cg)
+init_krylov_workspace(::Val{S}, m, n, V; kwargs...) where {S} = krylov_workspace(Val(S), m, n, V; kwargs...)
+
+# with memory (:diom)
+# init_krylov_workspace(::Val{:diom}, nvar, nvar, V; memory=20, kwargs...) = krylov_workspace(Val(:diom), nvar, nvar, V; memory=memory)
+
+
 function TrunkSolver(
   nlp::AbstractNLPModel{T, V};
   bk_max::Int = get(TRUNK_bk_max, nlp),
   monotone::Bool = get(TRUNK_monotone, nlp),
   nm_itmax::Int = get(TRUNK_nm_itmax, nlp),
   subsolver::Symbol = :cg,
+  subsolver_kwargs...,
 ) where {T, V <: AbstractVector{T}}
   params = TRUNKParameterSet(nlp; bk_max = bk_max, monotone = monotone, nm_itmax = nm_itmax)
   nvar = nlp.meta.nvar
@@ -144,7 +152,8 @@ function TrunkSolver(
   gt = V(undef, nvar)
   gn = isa(nlp, QuasiNewtonModel) ? V(undef, nvar) : V(undef, 0)
   Hs = V(undef, nvar)
-  krylov_subsolver = krylov_workspace(Val(subsolver), nvar, nvar, V)
+  # krylov_subsolver = krylov_workspace(Val(subsolver), nvar, nvar, V)
+  krylov_subsolver = init_krylov_workspace(Val(subsolver), nvar, nvar, V; subsolver_kwargs...)
   Sub = typeof(krylov_subsolver)
   H = hess_op!(nlp, x, Hs)
   Op = typeof(H)
@@ -174,6 +183,7 @@ end
   monotone::Bool = get(TRUNK_monotone, nlp),
   nm_itmax::Int = get(TRUNK_nm_itmax, nlp),
   subsolver::Symbol = :cg,
+  subsolver_kwargs = nothing,
   kwargs...,
 ) where {V}
   solver = TrunkSolver(
@@ -182,6 +192,7 @@ end
     monotone = monotone,
     nm_itmax = nm_itmax,
     subsolver = subsolver,
+    (subsolver_kwargs === nothing ? (; ) : subsolver_kwargs)...,
   )
   return solve!(solver, nlp; x = x, kwargs...)
 end
